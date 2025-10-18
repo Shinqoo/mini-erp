@@ -1,0 +1,129 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  CUSTOMER
+}
+
+enum OrderStatus {
+  PENDING
+  CANCELLED
+  PROCESSING
+  SHIPPED
+  COMPLETED
+  PAID
+  FAILED
+  REFUNDED
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  FAILED
+  REFUNDED
+}
+
+enum PaymentMethod {
+  STRIPE
+  PAYPAL
+  CASH
+}
+
+enum RefundStatus {
+  PENDING
+  SUCCEEDED
+  FAILED
+}
+
+model User {
+  id        Int      @id @default(autoincrement())
+  email     String   @unique
+  password  String
+  name      String?
+  phone     String?
+  role      Role     @default(CUSTOMER)
+  orders    Order[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Product {
+  id        Int         @id @default(autoincrement())
+  sku       String      @unique
+  name      String
+  price     Decimal     @db.Decimal(12, 2)
+  stock     Int
+  active    Boolean     @default(true)
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+  OrderItem OrderItem[]
+}
+
+model Order {
+  id              Int         @id @default(autoincrement())
+  user            User        @relation(fields: [userId], references: [id])
+  userId          Int
+  totalAmount     Decimal     @db.Decimal(12, 2)
+  status          OrderStatus @default(PENDING)
+  paymentStatus   PaymentStatus  @default(PENDING)
+  items           OrderItem[]
+  payment         Payment?
+  paymentIntentId String?     @unique
+  paidAt          DateTime?
+  shippingDate    DateTime?
+  completedDate   DateTime?
+  cancelledAt     DateTime?
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+}
+
+model OrderItem {
+  id        Int     @id @default(autoincrement())
+  order     Order   @relation(fields: [orderId], references: [id])
+  orderId   Int
+  product   Product @relation(fields: [productId], references: [id])
+  productId Int
+  quantity  Int
+  unitPrice Decimal @db.Decimal(12, 2)
+  subtotal  Decimal @db.Decimal(12, 2)
+}
+
+model Payment {
+  id            Int           @id @default(autoincrement())
+  order         Order         @relation(fields: [orderId], references: [id])
+  orderId       Int           @unique
+  transactionId String?       @unique
+  amount        Decimal       @db.Decimal(12, 2)
+  method        PaymentMethod
+  status        PaymentStatus @default(PENDING)
+  paymentIntentId  String?
+  refunds       Refund[]
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+}
+
+model Refund {
+  id               Int            @id @default(autoincrement())
+  payment          Payment        @relation(fields: [paymentId], references: [id])
+  paymentId        Int
+  amount           Decimal        @db.Decimal(12, 2)
+  reason           String?
+  refundedAt       DateTime       @default(now())
+  processedAt      DateTime?
+  providerRefundId String?
+  status           RefundStatus   @default(PENDING)
+}
+
