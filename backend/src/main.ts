@@ -16,6 +16,12 @@ async function bootstrap() {
     routes: ['/payments/webhook'],
   });
 
+  app.enableCors({
+    origin: ['http://localhost:8080'], // frontend origin
+    methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
+    credentials: true, // if you ever use cookies/auth headers
+  });
+
   await app.listen(3000);
   console.log('🚀 Server running on http://localhost:3000');
 }
