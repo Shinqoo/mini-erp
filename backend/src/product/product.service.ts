@@ -35,7 +35,7 @@ export class ProductService {
     return this.prisma.product.create({ data });
   }
 
-  update(id: number, data: { name?: string; description?: string; price?: number; stock?: number }) {
+  update(id: number, data: { name?: string; price?: number; stock?: number }) {
     return this.prisma.product.update({ where: { id }, data });
   }
 
