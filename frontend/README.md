@@ -14,7 +14,7 @@ cd frontend
 npm install
 
 Create a .env.local file:
-NEXT_PUBLIC_API_URL=http://localhost:3000
+NEXT_PUBLIC_API_URL=http://localhost:8080
 STRIPE_PUBLIC_KEY=pk_test_12345
 
 npm run dev
