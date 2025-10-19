@@ -48,6 +48,19 @@ export class OrderController {
     return this.orderService.getAllOrders();
   }
 
+  @UseGuards(JwtAuthGuard)
+  @Get('customer/:id')
+  async getOrdersByCustomerId(@Param('id') id: string, @Request() req) {
+    const userId = Number(id);
+
+    // If customer, they can only view their own orders
+    if (req.user.role === 'CUSTOMER' && req.user.userId !== userId) {
+      throw new BadRequestException('You are not allowed to view these orders');
+    }
+
+    return this.orderService.getOrdersByCustomerId(userId);
+  }
+
   /**
    * Get order by ID
    * Customers can only view their own orders

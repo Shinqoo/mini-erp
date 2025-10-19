@@ -89,6 +89,18 @@ export class OrderService {
     });
   }
 
+  async getOrdersByCustomerId(customerId: number) {
+    return this.prisma.order.findMany({
+      where: { userId: customerId },
+      include: {
+        user: true,
+        items: { include: { product: true } },
+        payment: true,
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
   /**
    * Get a single order by ID
    */

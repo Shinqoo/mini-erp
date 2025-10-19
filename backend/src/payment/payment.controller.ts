@@ -36,6 +36,7 @@ export class PaymentController {
   @HttpCode(200)
   async handleStripeWebhook(@Req() req: any) {
     const sig = req.headers['stripe-signature'];
+    this.logger.log(`🔥 Stripe Webhook received: ${req.rawBody ? 'has rawBody' : 'missing rawBody'}`);
 
     if (!req.rawBody) {
       throw new BadRequestException('Missing raw body for Stripe webhook');

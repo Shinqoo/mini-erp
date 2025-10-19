@@ -7,6 +7,7 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { NotificationsGateway } from '../notifications/notifications.gateway';
 import Stripe from 'stripe';
+import { PaymentStatus, OrderStatus } from '@prisma/client';
 
 @Injectable()
 export class PaymentService {
@@ -29,27 +30,6 @@ export class PaymentService {
     return this.stripe.webhooks.constructEvent(rawBody, sig, this.webhookSecret);
   }
 
-  // async createPaymentIntent(orderId: number, userId: number) {
-  //   const order = await this.prisma.order.findUnique({ where: { id: orderId } });
-  //   if (!order) throw new NotFoundException('Order not found');
-  //   if (order.userId !== userId)
-  //     throw new BadRequestException('Unauthorized order access');
-
-  //   const paymentIntent = await this.stripe.paymentIntents.create({
-  //     amount: Math.round(Number(order.totalAmount) * 100),
-  //     currency: 'usd',
-  //     metadata: { orderId: order.id.toString(), userId: userId.toString() },
-  //     automatic_payment_methods: { enabled: true },
-  //   });
-
-  //   await this.prisma.order.update({
-  //     where: { id: orderId },
-  //     data: { paymentIntentId: paymentIntent.id },
-  //   });
-
-  //   return { clientSecret: paymentIntent.client_secret };
-  // }
-
   async createPaymentIntent(orderId: number, userId: number) {
     const order = await this.prisma.order.findUnique({
       where: { id: orderId },
@@ -67,13 +47,18 @@ export class PaymentService {
       metadata: { orderId: order.id.toString() },
     });
 
-    // 🧩 NEW: Save the Payment record in DB
-    await this.prisma.payment.create({
-      data: {
+    await this.prisma.payment.upsert({
+      where: { orderId: order.id },
+      update: {
+        paymentIntentId: paymentIntent.id,
+        amount: order.totalAmount,
+        status: 'PENDING',
+      },
+      create: {
         orderId: order.id,
         amount: order.totalAmount,
-        method: 'STRIPE', // or PaymentMethod.STRIPE if using enum
-        status: 'PENDING', // PaymentStatus.PENDING
+        method: 'STRIPE',
+        status: 'PENDING',
         paymentIntentId: paymentIntent.id,
       },
     });
@@ -86,63 +71,94 @@ export class PaymentService {
   async handleStripeEvent(event: Stripe.Event) {
     try {
       const pi = event.data.object as Stripe.PaymentIntent;
-      const orderId = Number(pi.metadata?.orderId);
 
+      // ✅ Extract and validate orderId from metadata
+      const orderId = Number(pi.metadata?.orderId);
       if (!orderId || isNaN(orderId)) {
-        this.logger.warn(`⚠️ Stripe event ${event.type} missing valid orderId in metadata`);
+        this.logger.warn(
+          `⚠️ Stripe event ${event.type} is missing a valid orderId in metadata. Metadata: ${JSON.stringify(pi.metadata)}`
+        );
         return { received: true };
       }
 
+      this.logger.log(`📦 Stripe Event: ${event.type} for Order #${orderId} (PI: ${pi.id})`);
+
       switch (event.type) {
-        case 'payment_intent.succeeded':
+        case "payment_intent.succeeded":
+          this.logger.log(`💰 PaymentIntent succeeded for Order #${orderId}`);
           await this.markOrderPaid(orderId, pi.id);
           break;
-        case 'payment_intent.payment_failed':
+
+        case "payment_intent.payment_failed":
+          this.logger.warn(`❌ PaymentIntent failed for Order #${orderId}`);
           await this.markOrderFailed(orderId, pi.id);
           break;
+
+        case "payment_intent.canceled":
+          this.logger.warn(`🚫 PaymentIntent canceled for Order #${orderId}`);
+          await this.markOrderFailed(orderId, pi.id);
+          break;
+
         default:
-          this.logger.log(`Unhandled Stripe event type: ${event.type}`);
+          this.logger.log(`ℹ️ Unhandled Stripe event type: ${event.type}`);
       }
 
       return { received: true };
-    } catch (err) {
-      this.logger.error('Error processing webhook', err);
+    } catch (err: any) {
+      this.logger.error(`🔥 Error handling Stripe event: ${err.message}`, err.stack);
       return { received: true };
     }
   }
 
   private async markOrderPaid(orderId: number, paymentIntentId: string) {
-    if (!orderId || isNaN(orderId)) {
-      this.logger.error(`❌ Cannot mark order as PAID — invalid orderId: ${orderId}`);
-      return;
-    }
-
     const order = await this.prisma.order.findUnique({ where: { id: orderId } });
     if (!order) {
       this.logger.warn(`⚠️ No order found for id=${orderId}`);
       return;
     }
 
+    // ✅ Update payment row
+    await this.prisma.payment.updateMany({
+      where: { orderId },
+      data: {
+        status: PaymentStatus.PAID,
+        updatedAt: new Date(),
+      },
+    });
+
+    // ✅ Update order row
     await this.prisma.order.update({
       where: { id: orderId },
       data: {
-        status: 'PAID',
-        paymentStatus: 'PAID',
+        status: OrderStatus.COMPLETED, // your order table likely has this enum
+        paymentStatus: PaymentStatus.PAID,
         completedDate: new Date(),
-        paymentIntentId,
       },
     });
 
     this.notificationsGateway.notifyPaymentUpdate(orderId, 'PAID');
-    this.logger.log(`✅ Order ${orderId} marked as PAID and notification sent`);
+    this.logger.log(`✅ Order ${orderId} marked as COMPLETED (payment succeeded)`);
   }
 
   private async markOrderFailed(orderId: number, paymentIntentId: string) {
+    await this.prisma.payment.updateMany({
+      where: { orderId },
+      data: {
+        status: PaymentStatus.FAILED,
+        updatedAt: new Date(),
+      },
+    });
+
     await this.prisma.order.updateMany({
       where: { id: orderId },
-      data: { status: 'FAILED', paymentStatus: 'FAILED' },
+      data: {
+        status: OrderStatus.CANCELLED,
+        paymentStatus: PaymentStatus.FAILED,
+      },
     });
+
     this.notificationsGateway.notifyPaymentUpdate(orderId, 'FAILED');
-    this.logger.log(`❌ Order ${orderId} marked as FAILED`);
+    this.logger.log(`❌ Order ${orderId} marked as CANCELLED (payment failed)`);
   }
+
 }

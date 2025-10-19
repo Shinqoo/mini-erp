@@ -1,38 +1,56 @@
 "use client";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import Navbar from "@/components/ui/Navbar";
 
-export default function DashboardPage() {
+export default function AdminDashboard() {
   const router = useRouter();
-  const [user, setUser] = useState<any>(null);
+  const [user, setUser] = useState<{ name?: string; email?: string; role?: string } | null>(null);
 
   useEffect(() => {
-    // simulate user data (replace with your API fetch later)
-    const storedUser = localStorage.getItem("user");
-    if (!storedUser) router.push("/auth/login");
-    else setUser(JSON.parse(storedUser));
+    const token = localStorage.getItem("token");
+    const userData = localStorage.getItem("user");
+
+    if (!token || !userData) {
+      router.push("/");
+      return;
+    }
+
+    const parsedUser = JSON.parse(userData);
+    if (parsedUser.role !== "ADMIN") {
+      router.push("/dashboard/customer");
+      return;
+    }
+
+    setUser(parsedUser);
   }, [router]);
 
-  if (!user) return <p className="text-center mt-10 text-gray-500">Loading dashboard...</p>;
+  if (!user)
+    return (
+      <div className="min-h-screen bg-gray-950 flex items-center justify-center text-white">
+        Loading dashboard...
+      </div>
+    );
 
   return (
-    <main className="flex flex-col items-center justify-center min-h-screen bg-gray-50 text-gray-800">
-      <div className="bg-white shadow-xl rounded-2xl p-10 w-[90%] max-w-2xl text-center">
-        <h1 className="text-3xl font-bold mb-4">Welcome, {user.username || "User"}!</h1>
-        <p className="text-gray-500 mb-8">
-          This is your dashboard. In the future, you’ll see your products, orders, and payments here.
+    <div className="min-h-screen bg-gray-950 text-white">
+      <Navbar />
+      <div className="p-8">
+        <h1 className="text-4xl font-bold mb-4">Welcome, Admin 👋</h1>
+        <p className="text-gray-400 mb-6">
+          Logged in as: <span className="font-semibold">{user.email}</span>
         </p>
 
-        <button
-          onClick={() => {
-            localStorage.removeItem("user");
-            router.push("/auth/login");
-          }}
-          className="bg-red-500 hover:bg-red-600 text-white px-6 py-2 rounded-lg transition"
-        >
-          Logout
-        </button>
+        <div className="bg-gray-900 border border-gray-800 rounded-lg p-6">
+          <h2 className="text-xl font-semibold mb-3">Admin Panel</h2>
+          <ul className="space-y-2 text-gray-300">
+            <li>📦 Manage Products</li>
+            <li>🧾 Manage Orders</li>
+            <li>💳 Manage Payments</li>
+            <li>👥 Manage Users</li>
+          </ul>
+        </div>
       </div>
-    </main>
+    </div>
   );
 }

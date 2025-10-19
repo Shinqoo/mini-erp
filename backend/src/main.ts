@@ -6,23 +6,27 @@ import fastifyRawBody from 'fastify-raw-body';
 async function bootstrap() {
   const app = await NestFactory.create<NestFastifyApplication>(
     AppModule,
-    new FastifyAdapter(),
+    new FastifyAdapter({
+      bodyLimit: 1048576, // 1MB
+    }),
   );
 
-  // Enable raw body for Stripe webhooks
+  // ✅ Register raw-body plugin properly for Stripe webhooks
   await app.getHttpAdapter().getInstance().register(fastifyRawBody, {
-    field: 'rawBody',           // add raw body buffer to req.rawBody
-    global: false,              // only for selected routes
+    field: 'rawBody',
+    global: false,
+    encoding: 'utf8',
+    runFirst: true, 
     routes: ['/payments/webhook'],
   });
 
   app.enableCors({
-    origin: ['http://localhost:8080'], // frontend origin
+    origin: ['http://localhost:8080'],
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
-    credentials: true, // if you ever use cookies/auth headers
+    credentials: true,
   });
 
-  await app.listen(3000);
+  await app.listen(3000, '0.0.0.0');
   console.log('🚀 Server running on http://localhost:3000');
 }
 bootstrap();
